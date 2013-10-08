@@ -220,6 +220,7 @@ public abstract class ImageWorker {
 
     /**
      * The actual AsyncTask that will asynchronously process the image.
+     * 真正异步加载处理图片的任务
      */
     private class BitmapWorkerTask extends AsyncTask<Object, Void, Bitmap> {
         private Object data;
@@ -331,7 +332,8 @@ public abstract class ImageWorker {
      * A custom Drawable that will be attached to the imageView while the work is in progress.
      * Contains a reference to the actual worker task, so that it can be stopped if a new binding is
      * required, and makes sure that only the last started worker process can bind its result,
-     * independently of the finish order.
+     * independently of the finish order.（和新任务、旧任务哪个先执行完独立（无关））。
+     * 
      */
     private static class AsyncDrawable extends BitmapDrawable {
         private final WeakReference<BitmapWorkerTask> bitmapWorkerTaskReference;

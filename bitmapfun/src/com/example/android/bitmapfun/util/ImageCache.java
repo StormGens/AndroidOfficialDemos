@@ -17,7 +17,6 @@
 package com.example.android.bitmapfun.util;
 
 import android.annotation.TargetApi;
-import android.app.ActivityManager;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.CompressFormat;
@@ -46,30 +45,35 @@ public class ImageCache {
     private static final String TAG = "ImageCache";
 
     // Default memory cache size in kilobytes
+    //默认的缓存大小（单位kb）
     private static final int DEFAULT_MEM_CACHE_SIZE = 1024 * 5; // 5MB
 
     // Default disk cache size in bytes
+    //默认的磁盘缓存的大小（单位b）
     private static final int DEFAULT_DISK_CACHE_SIZE = 1024 * 1024 * 10; // 10MB
 
     // Compression settings when writing images to disk cache
+    //当需要把图像写到磁盘上时候的压缩设置
     private static final CompressFormat DEFAULT_COMPRESS_FORMAT = CompressFormat.JPEG;
     private static final int DEFAULT_COMPRESS_QUALITY = 70;
     private static final int DISK_CACHE_INDEX = 0;
 
     // Constants to easily toggle various caches
+    //轻松切换缓存的常量
     private static final boolean DEFAULT_MEM_CACHE_ENABLED = true;
     private static final boolean DEFAULT_DISK_CACHE_ENABLED = true;
     private static final boolean DEFAULT_CLEAR_DISK_CACHE_ON_START = false;
-    private static final boolean DEFAULT_INIT_DISK_CACHE_ON_CREATE = false;
+    private static final boolean DEFAULT_INIT_DISK_CACHE_ON_CREATE = false;//在Create一个ImageCache的时候是否同时创建一个磁盘缓存
 
-    private DiskLruCache mDiskLruCache;
-    private LruCache<String, Bitmap> mMemoryCache;
-    private ImageCacheParams mCacheParams;
-    private final Object mDiskCacheLock = new Object();
+    private DiskLruCache mDiskLruCache;//磁盘缓存
+    private LruCache<String, Bitmap> mMemoryCache;//内存缓存
+    private ImageCacheParams mCacheParams;//缓存参数
+    private final Object mDiskCacheLock = new Object();//磁盘缓存锁
     private boolean mDiskCacheStarting = true;
 
     /**
-     * Creating a new ImageCache object using the specified parameters.
+     * Creating a new ImageCache object using the specified parameters.</br>
+     * 以指定的参数创建一个新的ImageCache对象
      *
      * @param cacheParams The cache parameters to use to initialize the cache
      */
@@ -79,7 +83,7 @@ public class ImageCache {
 
     /**
      * Creating a new ImageCache object using the default parameters.
-     *
+     * 使用默认的参数创建一个新的ImageCache对象
      * @param context The context to use
      * @param uniqueName A unique name that will be appended to the cache directory
      */
@@ -90,6 +94,8 @@ public class ImageCache {
     /**
      * Find and return an existing ImageCache stored in a {@link RetainFragment}, if not found a new
      * one is created using the supplied params and saved to a {@link RetainFragment}.
+     * 发现并且返回一个已经存在的保存在RetainFragment中的ImageCache。如果没发现，那么就新建一个并保存到RetainFragment中去
+     * 
      *
      * @param fragmentManager The fragment manager to use when dealing with the retained fragment.
      * @param cacheParams The cache parameters to use if creating the ImageCache
@@ -115,7 +121,7 @@ public class ImageCache {
 
     /**
      * Initialize the cache, providing all parameters.
-     *
+     * 初始化高速缓存，提供所有参数。
      * @param cacheParams The cache parameters to initialize the cache
      */
     private void init(ImageCacheParams cacheParams) {
@@ -129,7 +135,7 @@ public class ImageCache {
             mMemoryCache = new LruCache<String, Bitmap>(mCacheParams.memCacheSize) {
                 /**
                  * Measure item size in kilobytes rather than units which is more practical
-                 * for a bitmap cache
+                 * for a bitmap cache 以kb为单位，更合理
                  */
                 @Override
                 protected int sizeOf(String key, Bitmap bitmap) {
@@ -141,8 +147,10 @@ public class ImageCache {
 
         // By default the disk cache is not initialized here as it should be initialized
         // on a separate thread due to disk access.
+        //默认情况下，由于磁盘的读取，磁盘缓存不该在这里初始化，而应该放到一个单独的线程里面做
         if (cacheParams.initDiskCacheOnCreate) {
             // Set up disk cache
+        	// 设置磁盘缓存
             initDiskCache();
         }
     }
@@ -151,7 +159,9 @@ public class ImageCache {
      * Initializes the disk cache.  Note that this includes disk access so this should not be
      * executed on the main/UI thread. By default an ImageCache does not initialize the disk
      * cache when it is created, instead you should call initDiskCache() to initialize it on a
-     * background thread.
+     * background thread.</br>
+     * 初始化磁盘高速缓存。请注意，这包括磁盘访问，因此这不应该被主/ UI线程中执行。
+     * 默认在初始化ImageCache时候不创建磁盘高速缓存，你应该在后台线程上叫initDiskCache（）来初始化它。
      */
     public void initDiskCache() {
         // Set up disk cache
@@ -203,7 +213,7 @@ public class ImageCache {
                 OutputStream out = null;
                 try {
                     DiskLruCache.Snapshot snapshot = mDiskLruCache.get(key);
-                    if (snapshot == null) {
+                    if (snapshot == null) {//
                         final DiskLruCache.Editor editor = mDiskLruCache.edit(key);
                         if (editor != null) {
                             out = editor.newOutputStream(DISK_CACHE_INDEX);
@@ -212,7 +222,7 @@ public class ImageCache {
                             editor.commit();
                             out.close();
                         }
-                    } else {
+                    } else {//如果拿到的snapshot不为空，那直接关掉里面的InputStream
                         snapshot.getInputStream(DISK_CACHE_INDEX).close();
                     }
                 } catch (final IOException e) {
@@ -293,7 +303,8 @@ public class ImageCache {
 
     /**
      * Clears both the memory and disk cache associated with this ImageCache object. Note that
-     * this includes disk access so this should not be executed on the main/UI thread.
+     * this includes disk access so this should not be executed on the main/UI thread.</br>
+     * 清除这个ImageCache对象内存和磁盘上的缓存。注意：该操作有磁盘读取，所以不能放到主/UI线程执行
      */
     public void clearCache() {
         if (mMemoryCache != null) {
@@ -322,7 +333,8 @@ public class ImageCache {
 
     /**
      * Flushes the disk cache associated with this ImageCache object. Note that this includes
-     * disk access so this should not be executed on the main/UI thread.
+     * disk access so this should not be executed on the main/UI thread.</br>
+     * 刷新此ImageCache对象保存的disk cache。注意：该操作有磁盘读取，所以不能放到主/UI线程执行
      */
     public void flush() {
         synchronized (mDiskCacheLock) {
@@ -341,7 +353,8 @@ public class ImageCache {
 
     /**
      * Closes the disk cache associated with this ImageCache object. Note that this includes
-     * disk access so this should not be executed on the main/UI thread.
+     * disk access so this should not be executed on the main/UI thread.</br>
+     * 关闭此ImageCache对象保存的disk cache。注意：该操作有磁盘读取，所以不能放到主/UI线程执行
      */
     public void close() {
         synchronized (mDiskCacheLock) {
@@ -363,6 +376,7 @@ public class ImageCache {
 
     /**
      * A holder class that contains cache parameters.
+     * 一个缓存参数的持有类
      */
     public static class ImageCacheParams {
         public int memCacheSize = DEFAULT_MEM_CACHE_SIZE;
@@ -377,6 +391,7 @@ public class ImageCache {
 
         public ImageCacheParams(Context context, String uniqueName) {
             diskCacheDir = getDiskCacheDir(context, uniqueName);
+            //一个示例：/storage/emulated/0/Android/data/com.example.android.bitmapfun/cache/thumbs
         }
 
         public ImageCacheParams(File diskCacheDir) {
@@ -406,15 +421,16 @@ public class ImageCache {
     }
 
     /**
-     * Get a usable cache directory (external if available, internal otherwise).
-     *
+     * Get a usable cache directory (external if available, internal otherwise).</br>
+     *得到一个可用的缓存目录
      * @param context The context to use
      * @param uniqueName A unique directory name to append to the cache dir
-     * @return The cache dir
+     * @return The cache dir 缓存目录
      */
     public static File getDiskCacheDir(Context context, String uniqueName) {
         // Check if media is mounted or storage is built-in, if so, try and use external cache dir
         // otherwise use internal cache dir
+    	// 查看media是否已被挂载或者是内置的，如果是，尝试使用外部缓存目录，否则使用内部缓存目录
         final String cachePath =
                 Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState()) ||
                         !isExternalStorageRemovable() ? getExternalCacheDir(context).getPath() :
@@ -426,6 +442,7 @@ public class ImageCache {
     /**
      * A hashing method that changes a string (like a URL) into a hash suitable for using as a
      * disk filename.
+     * 一个哈希算法：将一个字符串（比如一个URL）转化成一个哈希值，用来作为磁盘文件名
      */
     public static String hashKeyForDisk(String key) {
         String cacheKey;
@@ -468,7 +485,7 @@ public class ImageCache {
 
     /**
      * Check if external storage is built-in or removable.
-     *
+     * 查看外部的存储是内置的或者可以动的
      * @return True if external storage is removable (like an SD card), false
      *         otherwise.
      */
@@ -482,9 +499,9 @@ public class ImageCache {
 
     /**
      * Get the external app cache directory.
-     *
+     * 获得外部应用程序缓存目录。
      * @param context The context to use
-     * @return The external cache dir
+     * @return The external cache dir  外部应用程序缓存目录。
      */
     @TargetApi(8)
     public static File getExternalCacheDir(Context context) {
@@ -498,8 +515,8 @@ public class ImageCache {
     }
 
     /**
-     * Check how much usable space is available at a given path.
-     *
+     * Check how much usable space is available at a given path.</br>
+     * 测试现在在制定目录下有多少可用空间
      * @param path The path to check
      * @return The space available in bytes
      */
@@ -514,11 +531,12 @@ public class ImageCache {
 
     /**
      * Locate an existing instance of this Fragment or if not found, create and
-     * add it using FragmentManager.
+     * add it using FragmentManager.</br>
+     * 找到一个已经存在的Fragment实例，如果不存在，使用FragmentManager创建并且加入
      *
      * @param fm The FragmentManager manager to use.
      * @return The existing instance of the Fragment or the new instance if just
-     *         created.
+     *         created.</br>已经存在的Fragment实例，或者是新建出来的Fragment实例
      */
     public static RetainFragment findOrCreateRetainFragment(FragmentManager fm) {
         // Check to see if we have retained the worker fragment.
