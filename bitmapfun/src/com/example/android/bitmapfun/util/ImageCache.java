@@ -213,7 +213,7 @@ public class ImageCache {
                 OutputStream out = null;
                 try {
                     DiskLruCache.Snapshot snapshot = mDiskLruCache.get(key);
-                    if (snapshot == null) {//
+                    if (snapshot == null) {//目标图片不在DiskLruCache缓存中，加入存储之。
                         final DiskLruCache.Editor editor = mDiskLruCache.edit(key);
                         if (editor != null) {
                             out = editor.newOutputStream(DISK_CACHE_INDEX);

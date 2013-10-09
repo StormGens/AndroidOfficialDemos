@@ -158,8 +158,8 @@ public final class DiskLruCache implements Closeable {
     private final File journalFileTmp;
     private final int appVersion;
     private final long maxSize;
-    private final int valueCount;
-    private long size = 0;
+    private final int valueCount; //每个CacheEntry包含的value个数
+    private long size = 0;			//当前缓存的大小
     private Writer journalWriter;
     private final LinkedHashMap<String, Entry> lruEntries
             = new LinkedHashMap<String, Entry>(0, 0.75f, true);
@@ -169,8 +169,8 @@ public final class DiskLruCache implements Closeable {
      * To differentiate between old and current snapshots, each entry is given
      * a sequence number each time an edit is committed. A snapshot is stale if
      * its sequence number is not equal to its entry's sequence number.
-     * 为了区分过去和现在的快照，在每次编辑被提交时，每个条目被赋予一个序列号。如果
-     * 它的序列号不等于其条目的顺序号，快照是陈旧的，。
+     * 为了区分过去和现在的快照，在每次编辑被提交时，每个条目被赋予一个序列号。如果一个SnapSHot的sequence number 不等于
+     * 他的entry的sequence number ，那么这个SnapSHot是陈旧的。
      */
     private long nextSequenceNumber = 0;
 
@@ -306,10 +306,10 @@ public final class DiskLruCache implements Closeable {
      * there.
      * 打开在{@code directory}目录下的cache，如果不存在就新建一个
      *
-     * @param directory a writable directory一个可读的directory
-     * @param appVersion
-     * @param valueCount the number of values per cache entry. Must be positive.
-     * @param maxSize the maximum number of bytes this cache should use to store
+     * @param directory a writable directory 一个可读的directory
+     * @param appVersion app版本
+     * @param valueCount the number of values per cache entry. Must be positive.每个CacheEntry包含的value个数，必须是正整数
+     * @param maxSize the maximum number of bytes this cache should use to store 这个Cache用来保存的最大空间（字节数）
      * @throws IOException if reading or writing the cache directory fails
      */
     public static DiskLruCache open(File directory, int appVersion, int valueCount, long maxSize)
@@ -321,7 +321,7 @@ public final class DiskLruCache implements Closeable {
             throw new IllegalArgumentException("valueCount <= 0");
         }
 
-        // prefer to pick up where we left off
+        //case 1： prefer to pick up where we left off 更倾向于从我们上次离开的地方继续
         DiskLruCache cache = new DiskLruCache(directory, appVersion, valueCount, maxSize);
         if (cache.journalFile.exists()) {
             try {
@@ -337,24 +337,26 @@ public final class DiskLruCache implements Closeable {
             }
         }
 
-        // create a new empty cache
+        //case 2： create a new empty cache
         directory.mkdirs();
         cache = new DiskLruCache(directory, appVersion, valueCount, maxSize);
         cache.rebuildJournal();
         return cache;
     }
 
-    /**读取并逐行分析日志文件
+    /**读取并逐行分析日志文件,完成lruEntries的初始化
      * @throws IOException
      */
     private void readJournal() throws IOException {
         InputStream in = new BufferedInputStream(new FileInputStream(journalFile), IO_BUFFER_SIZE);
         try {
+        	//读取头文件
             String magic = readAsciiLine(in);
             String version = readAsciiLine(in);
             String appVersionString = readAsciiLine(in);
             String valueCountString = readAsciiLine(in);
             String blank = readAsciiLine(in);
+            //头文件有任何问题，抛出错误
             if (!MAGIC.equals(magic)
                     || !VERSION_1.equals(version)
                     || !Integer.toString(appVersion).equals(appVersionString)
@@ -364,7 +366,7 @@ public final class DiskLruCache implements Closeable {
                         + magic + ", " + version + ", " + valueCountString + ", " + blank + "]");
             }
 
-            while (true) {
+            while (true) {//循环逐行读取日志文件。
                 try {
                     readJournalLine(readAsciiLine(in));
                 } catch (EOFException endOfJournal) {
@@ -395,14 +397,14 @@ public final class DiskLruCache implements Closeable {
         Entry entry = lruEntries.get(key);
         if (entry == null) {
             entry = new Entry(key);
-            lruEntries.put(key, entry);
+            lruEntries.put(key, entry);// 除了标记为REMOVE的行都会被读取到LruEntries中，这也是lruEntries初始化
         }
 
         if (parts[0].equals(CLEAN) && parts.length == 2 + valueCount) {//CLEAN 
             entry.readable = true;
             entry.currentEditor = null;
-            entry.setLengths(copyOfRange(parts, 2, parts.length));//
-        } else if (parts[0].equals(DIRTY) && parts.length == 2) {// DIRTY 新建editor
+            entry.setLengths(copyOfRange(parts, 2, parts.length));//？
+        } else if (parts[0].equals(DIRTY) && parts.length == 2) {// DIRTY 新建editor,这在接下来会processJournal被判断为删除。
             entry.currentEditor = new Editor(entry);
         } else if (parts[0].equals(READ) && parts.length == 2) {//READ 
             // this work was already done by calling lruEntries.get()
@@ -420,12 +422,12 @@ public final class DiskLruCache implements Closeable {
         deleteIfExists(journalFileTmp);
         for (Iterator<Entry> i = lruEntries.values().iterator(); i.hasNext(); ) {
             Entry entry = i.next();
-            if (entry.currentEditor == null) {
+            if (entry.currentEditor == null) {     //case 1：没有currentEditor，将value的大小计算到size中。
                 for (int t = 0; t < valueCount; t++) {
                     size += entry.lengths[t];
                 }
             } else {
-                entry.currentEditor = null;
+                entry.currentEditor = null;			//case 2:有currentEditor，删除掉这个entry。删除掉dirty和clean的文件
                 for (int t = 0; t < valueCount; t++) {
                     deleteIfExists(entry.getCleanFile(t));
                     deleteIfExists(entry.getDirtyFile(t));
@@ -438,7 +440,7 @@ public final class DiskLruCache implements Closeable {
     /**
      * Creates a new journal that omits redundant information. This replaces the
      * current journal if it exists.
-     * 创建一个新的日志文件省略了冗杂信息，这个文件将替代旧的日志文件（如果旧的文件存在的话）。
+     * 根据目前崔在于lruEntries中存在的内容，重新创建一个新的日志文件省略了冗杂信息，这个文件将替代旧的日志文件（如果旧的文件存在的话）。
      */
     private synchronized void rebuildJournal() throws IOException {
         if (journalWriter != null) {
@@ -587,6 +589,11 @@ public final class DiskLruCache implements Closeable {
         return size;
     }
 
+    /**
+     * @param editor
+     * @param success 是否一切顺利
+     * @throws IOException
+     */
     private synchronized void completeEdit(Editor editor, boolean success) throws IOException {
         Entry entry = editor.entry;
         if (entry.currentEditor != editor) {
@@ -594,6 +601,7 @@ public final class DiskLruCache implements Closeable {
         }
 
         // if this edit is creating the entry for the first time, every index must have a value
+        // 如果这次编辑是位entry添加value，那么每个index中必须有一个值。
         if (success && !entry.readable) {
             for (int i = 0; i < valueCount; i++) {
                 if (!entry.getDirtyFile(i).exists()) {
